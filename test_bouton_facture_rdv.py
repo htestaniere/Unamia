@@ -1,5 +1,5 @@
 import os, pathlib, tempfile
-URL = (pathlib.Path(__file__).resolve().parent.parent / "index.html").as_uri()
+URL = (pathlib.Path(__file__).resolve().parent.parent / "app.src.html").as_uri()
 TMP = tempfile.gettempdir()
 CHROME = os.environ.get("CHROME_PATH") or None   # facultatif : chemin d'un Chrome/Chromium déjà installé
 from playwright.sync_api import sync_playwright

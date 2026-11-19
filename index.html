@@ -192,6 +192,12 @@ table.pr input{width:78px;padding:6px 8px;text-align:right}
 .alert.info{background:#F3EDE2;border-color:#E3D8C6;color:#5B4638}
 .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:80}
 .toast.on{opacity:1}
+a.btn{text-decoration:none;display:inline-flex;align-items:center;color:inherit}
+.rem{padding:12px 16px;margin-bottom:12px}.rem h3{margin:0 0 8px;padding:0;font-family:'Cormorant Garamond',serif;font-size:19px;color:var(--rose)}
+.rem .rr{display:flex;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px;flex-wrap:wrap}.rem .rr:first-of-type{border-top:0}
+.rem .rr .w{flex:1;min-width:180px}.rem .rr .w small{display:block;color:var(--muted);font-size:12px}
+.rem .ok{color:var(--green);font-size:13px}
+.btn.wa{background:#4B3427;color:#fff;border-color:#4B3427}
 </style>
 </head>
 <body>
@@ -219,6 +225,7 @@ table.pr input{width:78px;padding:6px 8px;text-align:right}
       <button class="btn primary" id="newBtn">+ Nouveau rendez-vous</button>
       <div class="wk-sum" id="wkSum"></div>
     </div>
+    <div class="card rem" id="remBox" style="display:none"></div>
     <div class="card grid-wrap"><div class="grid" id="grid"></div><div class="mgrid" id="mgrid" style="display:none"></div></div>
     <div class="legend"><span>À venir</span><span class="l2">Réalisé et payé</span><span class="l3">Passé, à clôturer</span><span class="l4">Annulé / pas venue</span><em class="muted" style="font-style:normal">Glissez un rendez-vous pour le déplacer. Semaine : cliquez sur un créneau vide pour en créer un. Mois : cliquez sur un jour pour l'ouvrir.</em></div>
   </section>
@@ -267,6 +274,8 @@ table.pr input{width:78px;padding:6px 8px;text-align:right}
         <div class="row" style="grid-template-columns:1fr 1fr"><label class="f">SIRET<input id="s-siret"></label><label class="f">Téléphone<input id="s-tel"></label></div>
         <div class="row"><label class="f">E-mail<input id="s-email"></label></div>
         <div class="row"><label class="f">Mention légale en bas de facture<input id="s-mention"></label></div>
+        <div class="row"><label class="f">Message de rappel WhatsApp<textarea id="s-rappel" rows="3" style="width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:10px;font:inherit;color:var(--ink);background:#fff"></textarea></label></div>
+        <p class="muted" style="font-size:12px;margin-top:-4px">Mots remplacés automatiquement : {prenom} {jour} {heure} {nom}</p>
         <div class="row" style="grid-template-columns:1fr 1fr"><label class="f">Début de journée (h)<input id="s-ds" type="number" min="0" max="23"></label><label class="f">Fin de journée (h)<input id="s-de" type="number" min="1" max="24"></label></div>
         <h3 style="padding-top:8px">URSSAF (micro-entreprise)</h3>
         <div class="u-row"><span>Taux de cotisations sociales <span class="muted">(prestations artisanales BIC)</span></span><span><input id="u-rate" type="number" step="0.1" min="0"> %</span></div>
@@ -292,6 +301,7 @@ table.pr input{width:78px;padding:6px 8px;text-align:right}
         <h3 style="padding-top:14px">Corbeille</h3>
         <p class="muted" style="font-size:12px;margin-top:0">Les rendez-vous et dépenses supprimés sont gardés ici et peuvent être restaurés à tout moment.</p>
         <div id="trashBox"></div>
+        <div id="snapBox"></div>
       </div>
     </div>
   </section>
@@ -305,6 +315,9 @@ table.pr input{width:78px;padding:6px 8px;text-align:right}
       <label class="f">Cliente<input id="f-client" list="clients" autocomplete="off" placeholder="Nom de la cliente"></label>
       <label class="f">Date<input id="f-date" type="date"></label>
       <label class="f">Heure<input id="f-start" type="time" step="300"></label>
+    </div>
+    <div class="row">
+      <label class="f">Téléphone de la cliente (WhatsApp)<input id="f-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="06 12 34 56 78"></label>
     </div>
     <div class="row">
       <label class="f">Notes<input id="f-notes" placeholder="Couleur, forme, remarques…"></label>
@@ -487,6 +500,7 @@ const DEFAULT_SETTINGS = {
   prices:{remplissage:70, semi:50, rallongement:90, depose:40, pedicure:50, nailart:null, reparation:3},
   durations:{remplissage:90, semi:60, rallongement:120, depose:30, pedicure:60, nailart:10, reparation:10},
   biz:{nom:'', adresse:'', siret:'', tel:'', email:''},
+  rappel:'Bonjour {prenom}, je vous rappelle votre rendez-vous {jour} à {heure}. À très vite ! {nom}',
   mention:'TVA non applicable, art. 293 B du CGI',
   urssaf:{rate:21.2, cfp:0.3, vl:0, plafond:83600, tva:37500, period:'mois'},
   dayStart:8, dayEnd:20
@@ -549,6 +563,7 @@ const store={mode:'pending',col:null,uid:null,pending:{},inflight:{},fails:0,ret
 const LS_KEY='carnet-ongles-v1';
 const KINDS={rdv:appts,dep:deps,inv:invs};
 const trash=new Map();
+const snaps=new Map();let snapDone=false;
 function mergeSettings(s){const d=clone(DEFAULT_SETTINGS);if(!s)return d;
   if(s.prices&&s.prices.pedicure==null)s={...s,prices:{...s.prices,pedicure:50}};
   return {...d,...s,prices:{...d.prices,...(s.prices||{})},durations:{...d.durations,...(s.durations||{})},biz:{...d.biz,...(s.biz||{})},urssaf:{...d.urssaf,...(s.urssaf||{})}}}
@@ -600,6 +615,14 @@ function flushAll(){
 }
 function scheduleRetry(){if(store.retryT)return;const d=Math.min(60000,2000*Math.pow(2,Math.min(store.fails,5)));
   store.retryT=setTimeout(()=>{store.retryT=null;flushAll()},d)}
+/* Sauvegarde automatique mensuelle : à la 1re ouverture de chaque mois, une copie complète est gardée en ligne */
+function autoSnapshot(){
+  if(store.mode!=='db')return;
+  const m=ymd(new Date()).slice(0,7),id='bak-'+m;
+  if(snaps.has(id)||dataCount(fullData())===0)return;
+  const data=fullData(),body={id,month:m,savedAt:new Date().toISOString(),counts:{rdv:data.appts.length,dep:data.deps.length,inv:data.invs.length},data};
+  snaps.set(id,body);store.pending[id]=body;lsSet(pendingKey(),store.pending);updateSync();flushAll();
+}
 function persist(kind,obj){writeDoc(kind+'-'+obj.id,obj);return Promise.resolve()}
 function remove(kind,id){const o=KINDS[kind].get(id);if(!o)return Promise.resolve();writeDoc(kind+'-'+id,{...o,deletedAt:new Date().toISOString()});return Promise.resolve()}
 function restoreFromTrash(docId){const t=trash.get(docId);if(!t)return;const o={...t};delete o.deletedAt;delete o._kind;writeDoc(docId,o)}
@@ -636,13 +659,13 @@ async function initStore(){
     const mirror=lsGet(mirrorKey());if(mirror)loadData(mirror);
     for(const [k,v] of Object.entries(store.pending))applyDoc(k,v);
     renderAll(true);
-    $('storeNote').textContent='Vos données sont enregistrées en ligne dans votre espace privé, avec une copie de secours dans ce navigateur. Les suppressions vont à la corbeille. Téléchargez quand même une sauvegarde chaque semaine et gardez-la hors de cet appareil (Drive, e-mail…).';
+    $('storeNote').textContent='Vos données sont enregistrées en ligne dans votre espace privé, avec une copie de secours dans ce navigateur. Les suppressions vont à la corbeille. Téléchargez quand même une sauvegarde chaque mois et gardez-la hors de cet appareil (Drive, e-mail…).';
     if(window.SB_BACKEND&&!inClaude){const n=$('storeNote');n.insertAdjacentHTML('afterend',`<p class="muted" style="font-size:13px">Connectée : <b>${esc(store.sbEmail||'')}</b> — pour retrouver vos données sur un autre appareil, connectez-vous avec le même e-mail. <button class="btn sm" id="sbOut">Se déconnecter</button></p>`);$('sbOut').onclick=()=>window.SB_BACKEND.signOut()}
     updateSync();
     const timer=setTimeout(()=>{if(!store.confirmed)setStatus('Serveur injoignable — vos saisies sont gardées sur l\'appareil','warn')},10000);
     store.col.onSnapshot(snap=>{
-      appts.clear();deps.clear();invs.clear();trash.clear();
-      let n=0;snap.docs.forEach(d=>{const v=d.data();if(!v)return;if(d.id!=='settings')n++;applyDoc(d.id,v)});
+      appts.clear();deps.clear();invs.clear();trash.clear();snaps.clear();
+      let n=0;snap.docs.forEach(d=>{const v=d.data();if(!v)return;if(d.id.startsWith('bak-')){snaps.set(d.id,v);return}if(d.id!=='settings')n++;applyDoc(d.id,v)});
       for(const [k,v] of Object.entries(store.pending))applyDoc(k,v);
       if(!snap.metadata.fromCache){
         clearTimeout(timer);
@@ -650,6 +673,7 @@ async function initStore(){
           const m=lsGet(mirrorKey());store.emptyDb=(n===0&&!pendingCount()&&dataCount(m)>0)?m:false;
           flushAll();}
         if(!store.emptyDb)saveMirror();
+        if(!snapDone&&!store.emptyDb){snapDone=true;autoSnapshot()}
       }
       updateSync();renderAll(true);
     },err=>{clearTimeout(timer);setStatus('Synchronisation interrompue — rechargez la page','err');store.fatal=store.fatal||'sync';renderAlerts()});
@@ -677,7 +701,8 @@ function renderAlerts(){
   if(store.mode==='local'&&store.fatal==='local')h+=`<div class="alert err"><b>Le navigateur refuse d'enregistrer</b> (navigation privée ou stockage plein). <button class="btn sm" data-act="backup">Télécharger une sauvegarde maintenant</button></div>`;
   const total=appts.size+deps.size;
   const d=daysSince(settings.lastBackupAt);
-  if(total>0&&(d===null||d>=7))h+=`<div class="alert info">${d===null?'Aucune sauvegarde téléchargée pour l\'instant.':`Dernière sauvegarde il y a ${d} jours.`} Une copie par semaine, gardée ailleurs (Drive, e-mail), protège contre tout imprévu. <button class="btn sm primary" data-act="backup">Télécharger la sauvegarde</button></div>`;
+  const lim=store.mode==='db'?30:7;
+  if(total>0&&(d===null||d>=lim))h+=`<div class="alert info">${d===null?'Aucune sauvegarde téléchargée pour l\'instant.':`Dernière sauvegarde il y a ${d} jours.`} Une copie par ${store.mode==='db'?'mois':'semaine'}, gardée ailleurs (Drive, e-mail), protège contre tout imprévu. <button class="btn sm primary" data-act="backup">Télécharger la sauvegarde</button></div>`;
   el.innerHTML=h;
   el.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{const a=b.dataset.act;
     if(a==='backup')downloadBackup();
@@ -738,7 +763,30 @@ function setMode(m){viewMode=m;
 $('newBtn').onclick=()=>{const t=new Date();let d;
   if(viewMode==='month')d=(t.getMonth()===monthCursor.getMonth()&&t.getFullYear()===monthCursor.getFullYear())?t:monthCursor;
   else d=(t>=weekStart&&t<addDays(weekStart,7))?t:weekStart;openModal(null,ymd(d),'10:00')};
+/* Rappels WhatsApp : un clic ouvre WhatsApp avec le message prêt, il ne reste qu'à envoyer */
+function waNumber(t){let d=String(t||'').replace(/[^\d+]/g,'');if(d.startsWith('+'))d=d.slice(1);else if(d.startsWith('00'))d=d.slice(2);else if(/^0\d{9}$/.test(d))d='33'+d.slice(1);return /^\d{9,15}$/.test(d)?d:''}
+function dayWord(date){const t=ymd(new Date()),tm=ymd(new Date(Date.now()+864e5));
+  if(date===t)return "aujourd'hui";if(date===tm)return 'demain';return parseYmd(date).toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
+function reminderText(a){const h=a.start.replace(':','h').replace(/h00$/,'h'),first=(a.client||'').trim().split(/\s+/)[0]||'';
+  return (settings.rappel||DEFAULT_SETTINGS.rappel).replace(/\{prenom\}/g,first).replace(/\{jour\}/g,dayWord(a.date)).replace(/\{heure\}/g,h).replace(/\{nom\}/g,settings.biz.nom||'').replace(/\s+$/,'')}
+function waLink(a){const n=waNumber(a.phone);return n?'https://wa.me/'+n+'?text='+encodeURIComponent(reminderText(a)):''}
+function renderReminders(){
+  const box=$('remBox');if(!box)return;
+  const now=new Date(),t0=ymd(now),t2=ymd(new Date(Date.now()+2*864e5));
+  const list=[...appts.values()].filter(a=>S(a)==='prevu'&&a.date>=t0&&a.date<=t2&&!(a.date===t0&&toMin(a.start)<=now.getHours()*60+now.getMinutes()))
+    .sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
+  if(!list.length){box.style.display='none';box.innerHTML='';return}
+  box.style.display='';
+  box.innerHTML='<h3>Rappels à envoyer</h3>'+list.map(a=>{const lk=waLink(a);
+    const act=a.remindedAt?`<span class="ok">Rappel envoyé ✓</span> <a class="btn sm" data-wa="${a.id}" ${lk?`href="${lk}" target="_blank" rel="noopener"`:''}>Renvoyer</a>`
+      :lk?`<a class="btn sm wa" data-wa="${a.id}" href="${lk}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>`
+      :`<button class="btn sm" data-edit="${a.id}">Ajouter le numéro</button>`;
+    return `<div class="rr"><div class="w"><b>${esc(a.client)}</b><small>${esc(dayWord(a.date))} à ${a.start}</small></div>${act}</div>`}).join('');
+  box.querySelectorAll('[data-wa]').forEach(el=>el.addEventListener('click',()=>{const a=appts.get(el.dataset.wa);if(!a)return;setTimeout(()=>{persist('rdv',{...a,remindedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});renderReminders()},300)}));
+  box.querySelectorAll('[data-edit]').forEach(el=>el.onclick=()=>openModal(el.dataset.edit));
+}
 function renderPlanning(){
+  renderReminders();
   $('grid').style.display=viewMode==='week'?'':'none';$('mgrid').style.display=viewMode==='month'?'':'none';
   viewMode==='week'?renderWeek():renderMonth();
 }
@@ -927,7 +975,7 @@ function openModal(id,date,start){
   editing=id||null;const a=id?appts.get(id):null;
   $('mTitle').textContent=a?'Rendez-vous':'Nouveau rendez-vous';
   $('f-client').value=a?a.client:'';$('f-date').value=a?a.date:date;$('f-start').value=a?a.start:start;
-  $('f-notes').value=a?(a.notes||''):'';
+  $('f-notes').value=a?(a.notes||''):'';$('f-phone').value=a?(a.phone||''):'';
   lines=a?clone(a.items||[]):[];
   keepDur=(a&&a.items&&a.items.length&&+a.duration!==autoDuration(a.items))?+a.duration:null; /* anciennes durées saisies à la main : conservées tant que les prestations ne changent pas */
   renderLines();
@@ -941,6 +989,8 @@ function openModal(id,date,start){
   $('clients').innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
   $('ov').classList.add('on');if(!a)setTimeout(()=>$('f-client').focus(),50);
 }
+$('f-client').addEventListener('change',()=>{if($('f-phone').value.trim())return;const n=$('f-client').value.trim().toLowerCase();if(!n)return;
+  const last=[...appts.values()].filter(x=>x.phone&&(x.client||'').trim().toLowerCase()===n).sort((x,y)=>(y.date+y.start).localeCompare(x.date+x.start))[0];if(last)$('f-phone').value=last.phone});
 function closeModal(){$('ov').classList.remove('on');editing=null}
 function saveModal(keepOpen){
   const err=m=>{$('f-err').textContent=m};
@@ -958,7 +1008,8 @@ function saveModal(keepOpen){
   const needPay=status==='fait'||fee>0;
   if(needPay&&!pay)return err('Choisissez le moyen de paiement.');
   const prev=editing?appts.get(editing):null;
-  const a={id:editing||uid(),client,date,start,duration,notes:$('f-notes').value.trim(),
+  const phone=$('f-phone').value.trim();
+  const a={id:editing||uid(),client,date,start,duration,notes:$('f-notes').value.trim(),phone,remindedAt:(prev&&prev.date===date&&prev.start===start)?prev.remindedAt:undefined,
     items:lines.map(l=>({k:l.k,qty:Math.round(+l.qty),unit:+l.unit,dur:Math.max(0,Math.round(+(l.dur??settings.durations[l.k])||0))})),
     status,done:status==='fait',fee,payment:needPay?pay:'',
     createdAt:prev?.createdAt||new Date().toISOString(),updatedAt:new Date().toISOString()};
@@ -1230,7 +1281,7 @@ $('dlDepCsv').onclick=()=>{
 function renderSettings(){
   const b=settings.biz,u=settings.urssaf;
   $('s-nom').value=b.nom;$('s-adresse').value=b.adresse;$('s-siret').value=b.siret;$('s-tel').value=b.tel;$('s-email').value=b.email;
-  $('s-mention').value=settings.mention;$('s-ds').value=settings.dayStart;$('s-de').value=settings.dayEnd;
+  $('s-mention').value=settings.mention;$('s-rappel').value=settings.rappel||'';$('s-ds').value=settings.dayStart;$('s-de').value=settings.dayEnd;
   $('u-rate').value=u.rate;$('u-cfp').value=u.cfp;$('u-vl').value=u.vl;$('u-plafond').value=u.plafond;$('u-tva').value=u.tva;$('u-period').value=u.period;
   $('priceRows').innerHTML='<tr><th>Prestation</th><th>Prix</th><th>Durée</th></tr>'+PRESTATIONS.map(p=>`<tr><td>${p.label}${p.mode==='ongle'?' <span class="muted">(par ongle)</span>':''}</td>
     <td><input type="number" min="0" step="0.5" data-pk="${p.k}" value="${settings.prices[p.k]??''}" placeholder="à saisir"> €</td>
@@ -1239,7 +1290,7 @@ function renderSettings(){
 $('saveSettings').onclick=saveSettingsForm;
 function saveSettingsForm(){
   settings.biz={nom:$('s-nom').value.trim(),adresse:$('s-adresse').value.trim(),siret:$('s-siret').value.trim(),tel:$('s-tel').value.trim(),email:$('s-email').value.trim()};
-  settings.mention=$('s-mention').value.trim();
+  settings.mention=$('s-mention').value.trim();settings.rappel=$('s-rappel').value.trim()||DEFAULT_SETTINGS.rappel;
   const ds=Math.max(0,Math.min(23,parseInt($('s-ds').value)||8)),de=Math.max(ds+1,Math.min(24,parseInt($('s-de').value)||20));settings.dayStart=ds;settings.dayEnd=de;
   document.querySelectorAll('[data-pk]').forEach(i=>{settings.prices[i.dataset.pk]=i.value===''?null:+i.value});
   document.querySelectorAll('[data-dk]').forEach(i=>{settings.durations[i.dataset.dk]=Math.max(0,+i.value||0)});
@@ -1259,6 +1310,10 @@ function renderTrash(){
   const items=[...trash.entries()].sort((a,b)=>(b[1].deletedAt||'').localeCompare(a[1].deletedAt||'')).slice(0,60);
   $('trashBox').innerHTML=items.length?'<table class="t" style="margin:0 -16px;width:calc(100% + 32px)">'+items.map(([k,t])=>`<tr><td>${t._kind==='rdv'?`Rdv · ${esc(t.client)} · ${frDate(t.date)} ${t.start}`:t._kind==='dep'?`Dépense · ${esc(t.label)} · ${eur(t.amount)}`:'Facture '+esc(t.num)}<div class="muted" style="font-size:11px">supprimé le ${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</div></td><td class="n"><button class="btn sm" data-restore="${esc(k)}">Restaurer</button></td></tr>`).join('')+'</table>'
     :'<p class="muted" style="font-size:13px;margin:0">La corbeille est vide.</p>';
+  const sb=$('snapBox');
+  if(sb){const L=[...snaps.values()].sort((a,b)=>b.month.localeCompare(a.month));
+    sb.innerHTML=store.mode!=='db'?'':'<h3 style="padding-top:14px">Sauvegardes mensuelles automatiques</h3><p class="muted" style="font-size:12px;margin-top:0">Une copie complète est gardée en ligne à la première ouverture de chaque mois.</p>'+(L.length?'<table class="t" style="margin:0 -16px;width:calc(100% + 32px)">'+L.map(x=>`<tr><td>${cap(monthLabel(x.month))} <span class="muted">· ${x.counts.rdv} rdv, ${x.counts.dep} dépenses, ${x.counts.inv} factures</span></td><td style="text-align:right"><button class="btn sm" data-snap="${x.id}">Restaurer</button></td></tr>`).join('')+'</table>':'<p class="muted" style="font-size:13px;margin:0">Pas encore de sauvegarde mensuelle.</p>');
+    sb.querySelectorAll('[data-snap]').forEach(b=>b.onclick=()=>{const x=snaps.get(b.dataset.snap);if(x)importData(x.data)})}
   $('trashBox').querySelectorAll('[data-restore]').forEach(b=>b.onclick=()=>{restoreFromTrash(b.dataset.restore);renderAll();renderTrash();toast('Élément restauré')});
 }
 
