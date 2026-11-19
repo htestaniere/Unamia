@@ -42,3 +42,10 @@ Ce sont des scénarios de vérification qui pilotent la page dans un navigateur 
 
 Fond crème `#F8F4EE`, brun chocolat `#4B3427` (boutons, texte `#3A2A22`), beige du logo `#AA9E8B`, vert sauge `#5F7F66` (réalisé), caramel `#A97B3F` (à clôturer).
 Titres en Cormorant Garamond, texte en Jost (Google Fonts).
+
+## Synchronisation multi-appareils (Supabase)
+
+`index.html` = `app.src.html` + `web/supabase.umd.js` + `web/backend.js` (reconstruire avec `python3 build_web.py`).
+Connexion e-mail + mot de passe ; les données sont dans la table `docs` (sécurité RLS : chacun ne voit que ses lignes, voir `supabase/setup.sql`).
+Sans connexion internet, les saisies sont gardées sur l'appareil et renvoyées automatiquement.
+La clé « publishable » dans `web/backend.js` est publique par conception ; ne jamais y mettre la clé `secret`.
