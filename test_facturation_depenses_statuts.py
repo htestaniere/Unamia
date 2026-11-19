@@ -1,0 +1,37 @@
+import os, pathlib, tempfile
+URL = (pathlib.Path(__file__).resolve().parent.parent / "index.html").as_uri()
+TMP = tempfile.gettempdir()
+CHROME = os.environ.get("CHROME_PATH") or None   # facultatif : chemin d'un Chrome/Chromium déjà installé
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    b=p.chromium.launch(executable_path=CHROME)
+    pg=b.new_page(viewport={'width':1280,'height':1000},accept_downloads=True);errs=[];pg.on('pageerror',lambda e:errs.append(str(e)))
+    pg.goto(URL)
+    def rdv(c,t,chips,st=None,pay=None,fee=None,date=None):
+        pg.click('#newBtn');pg.fill('#f-client',c);pg.fill('#f-start',t)
+        if date: pg.fill('#f-date',date)
+        for k in chips: pg.click(f'.chip[data-k={k}]')
+        if 'nailart' in chips: pg.fill('tr[data-k=nailart] input[data-f=qty]','4');pg.fill('tr[data-k=nailart] input[data-f=unit]','5')
+        if st: pg.click(f'#stSeg button[data-s={st}]')
+        if fee: pg.fill('#f-fee',fee)
+        if pay: pg.click(f'.pays label:has-text("{pay}")')
+        pg.click('#f-save')
+    rdv('Léa Martin','09:00',['remplissage','nailart'],'fait','Lydia',date='2026-11-17')
+    rdv('Sarah B.','14:00',['semi'],'annule','Espèces','20',date='2026-11-18')
+    rdv('Inès','16:00',['rallongement'],'absent',date='2026-11-18')
+    rdv('Zoé','11:00',['semi'],'fait','PayPal',date='2026-11-03')
+    pg.click('text=Dépenses');pg.fill('#d-label','Gel UV');pg.fill('#d-amount','45.5');pg.click('#d-save')
+    pg.click('nav.tabs >> text=Rapport');
+    with pg.expect_download() as d: pg.click('#dlInvoices')
+    d.value.save_as(TMP+'/inv2.html')
+    pg.click('nav.tabs >> text=Planning');rdv('Léa Martin','10:00',['depose'],'fait','Espèces',date='2026-11-19')
+    pg.click('nav.tabs >> text=Rapport')
+    with pg.expect_download() as d: pg.click('#dlInvoices')
+    d.value.save_as(TMP+'/inv3.html')
+    with pg.expect_download() as d: pg.click('#dlLivreM')
+    d.value.save_as(TMP+'/livre.html')
+    pg.screenshot(path=TMP+'/r1.png',full_page=True)
+    print(pg.evaluate("[...invs.values()].map(v=>v.num+' '+v.client+' '+v.total)"))
+    pg.click('nav.tabs >> text=Planning');pg.screenshot(path=TMP+'/p1.png')
+    pg.click('nav.tabs >> text=Réglages');pg.screenshot(path=TMP+'/s1.png',full_page=True)
+    print(errs);b.close()
