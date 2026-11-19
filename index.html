@@ -318,6 +318,7 @@ a.btn{text-decoration:none;display:inline-flex;align-items:center;color:inherit}
     </div>
     <div class="row">
       <label class="f">Téléphone de la cliente (WhatsApp)<input id="f-phone" type="tel" inputmode="tel" autocomplete="off" placeholder="06 12 34 56 78"></label>
+      <div id="waRow" style="display:none;margin-top:6px"><button type="button" class="btn sm" id="f-wa"></button> <span class="muted" id="waInfo" style="font-size:12px"></span></div>
     </div>
     <div class="row">
       <label class="f">Notes<input id="f-notes" placeholder="Couleur, forme, remarques…"></label>
@@ -773,13 +774,12 @@ function waLink(a){const n=waNumber(a.phone);return n?'https://wa.me/'+n+'?text=
 function renderReminders(){
   const box=$('remBox');if(!box)return;
   const now=new Date(),t0=ymd(now),t2=ymd(new Date(Date.now()+2*864e5));
-  const list=[...appts.values()].filter(a=>S(a)==='prevu'&&a.date>=t0&&a.date<=t2&&!(a.date===t0&&toMin(a.start)<=now.getHours()*60+now.getMinutes()))
+  const list=[...appts.values()].filter(a=>S(a)==='prevu'&&!a.remindedAt&&a.date>=t0&&a.date<=t2&&!(a.date===t0&&toMin(a.start)<=now.getHours()*60+now.getMinutes()))
     .sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
   if(!list.length){box.style.display='none';box.innerHTML='';return}
   box.style.display='';
   box.innerHTML='<h3>Rappels à envoyer</h3>'+list.map(a=>{const lk=waLink(a);
-    const act=a.remindedAt?`<span class="ok">Rappel envoyé ✓</span> <a class="btn sm" data-wa="${a.id}" ${lk?`href="${lk}" target="_blank" rel="noopener"`:''}>Renvoyer</a>`
-      :lk?`<a class="btn sm wa" data-wa="${a.id}" href="${lk}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>`
+    const act=lk?`<a class="btn sm wa" data-wa="${a.id}" href="${lk}" target="_blank" rel="noopener">Envoyer sur WhatsApp</a>`
       :`<button class="btn sm" data-edit="${a.id}">Ajouter le numéro</button>`;
     return `<div class="rr"><div class="w"><b>${esc(a.client)}</b><small>${esc(dayWord(a.date))} à ${a.start}</small></div>${act}</div>`}).join('');
   box.querySelectorAll('[data-wa]').forEach(el=>el.addEventListener('click',()=>{const a=appts.get(el.dataset.wa);if(!a)return;setTimeout(()=>{persist('rdv',{...a,remindedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});renderReminders()},300)}));
@@ -948,7 +948,23 @@ function updTotal(){
   $('f-durtxt').textContent=lines.length?'Durée : '+durLabel(currentDuration()):'';
 }
 function currentDuration(){return keepDur||autoDuration(lines)}
+function refreshWa(){
+  const row=$('waRow');if(!row)return;
+  const a=editing?appts.get(editing):null,ok=!!waNumber($('f-phone').value)&&status==='prevu';
+  row.style.display=ok?'block':'none';if(!ok)return;
+  $('f-wa').textContent=a&&a.remindedAt?'Renvoyer le rappel WhatsApp':'Envoyer un rappel WhatsApp';
+  $('waInfo').textContent=a&&a.remindedAt?'Dernier rappel : '+new Date(a.remindedAt).toLocaleString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}):'';
+}
+$('f-phone').addEventListener('input',refreshWa);
+$('f-wa').onclick=()=>{
+  const a=saveModal(true);if(!a)return;
+  const lk=waLink(a);if(!lk)return;
+  window.open(lk,'_blank','noopener');
+  persist('rdv',{...a,remindedAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+  closeModal();renderAll();toast('Rappel ouvert dans WhatsApp');
+};
 function syncStatus(){
+  setTimeout(refreshWa,0);
   $('stSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.s===status));
   $('stBox').className='st-box '+status;
   const cancel=status==='annule'||status==='absent';
@@ -987,6 +1003,7 @@ function openModal(id,date,start){
   $('f-del').style.visibility=a?'visible':'hidden';$('f-err').textContent='';
   const names=[...new Set([...appts.values()].map(x=>x.client).filter(Boolean))].sort((x,y)=>x.localeCompare(y,'fr'));
   $('clients').innerHTML=names.map(n=>`<option value="${esc(n)}">`).join('');
+  refreshWa();
   $('ov').classList.add('on');if(!a)setTimeout(()=>$('f-client').focus(),50);
 }
 $('f-client').addEventListener('change',()=>{if($('f-phone').value.trim())return;const n=$('f-client').value.trim().toLowerCase();if(!n)return;
